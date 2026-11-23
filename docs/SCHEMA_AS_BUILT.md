@@ -173,6 +173,7 @@ adds `payments.sale_number` (nullable TEXT — the counter bill a PromptPay paym
 | `0046_banners` | `banners` (home-page hero/promo banners). |
 | `0047_affiliate_items` | `affiliate_items` + `affiliate_clicks` (mechanic-tools affiliate). |
 | `0108_car_province` | **A car = plate + province** (plan 13.11, 21 Nov 2026). `customers` rebuilt: `plate_province text NOT NULL DEFAULT ''`, **uq `(license_plate, plate_province)`** (was uq `license_plate`). `plate_province` added to `onsite_sales` and `repair_jobs`; `customer_history_entries` rebuilt with it in its re-import key. `''` = no province (a parts sale, or a car saved before this). |
+| `0110_line_job_cards` | Plan 13.2 (23 Nov 2026), the customer's LINE job cards: `repair_jobs.customer_token` (32 random hex, uq — the job page's address and the QR's code; existing rows filled), `repair_job_events.card_queued_at` (when the step's card was queued; old steps marked done so connecting the OA never sends old cards), and `line_links` (`line_user_id` + `license_plate` + `plate_province` PK, `job_id`→repair_jobs, `linked_at`; index on the car). Additive. |
 | `0109_repair_job_photos` | `repair_job_photos` (plan 13.3, 23 Nov 2026): one photo set per repair job — `job_id`→repair_jobs, `r2_key` (uq, private `job-photos/` in R2), `content_type`, `size_bytes`, `user_id`→users, `created_at`. Additive. |
 
 ## Migration workflow (do this exactly)

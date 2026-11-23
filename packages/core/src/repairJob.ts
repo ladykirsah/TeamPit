@@ -115,8 +115,12 @@ export function waitUntil(
   return times.length > 0 ? Math.max(...times) : null;
 }
 
-/** The steps that send the customer a LINE OA update (owner's list); the rest are shop-only. */
-const CUSTOMER_UPDATES = ["in", "check", "waiting_parts", "working", "ready"] as const;
+/**
+ * The steps that send the customer a LINE card (plan 13.2, owner's pick A, 23 Nov 2026: received ·
+ * checked · price to approve · waiting for parts with the time · ready with the amount · paid with
+ * the bill). The rest are shop-only. Was in · check · waiting_parts · working · ready (plan 10.1).
+ */
+const CUSTOMER_UPDATES = ["in", "check", "estimate", "waiting_parts", "ready", "paid"] as const;
 export type JobCustomerUpdate = (typeof CUSTOMER_UPDATES)[number];
 
 export function customerUpdateFor(status: JobStatus): JobCustomerUpdate | null {

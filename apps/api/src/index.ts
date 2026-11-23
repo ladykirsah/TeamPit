@@ -162,6 +162,17 @@ export interface Env {
   MECHANIC_EMAILS?: string;
   /** Comma-separated browser origins allowed to call this API with credentials (admin UI). */
   ALLOWED_CORS_ORIGINS?: string;
+  /**
+   * Plan 13.2 — the shop's LINE OA (Den Air's only, so far). Secrets the owner sets in the
+   * Cloudflare dashboard; all three, or no card is sent. See line.ts.
+   */
+  LINE_CHANNEL_SECRET?: string;
+  LINE_CHANNEL_ACCESS_TOKEN?: string;
+  LINE_OA_ID?: string;
+  /** Practice copy only: "1" writes the cards to the log instead of sending them. */
+  LINE_FAKE?: string;
+  /** The queue the job cards wait on, so staff never wait for LINE (dead letters: -dlq). */
+  LINE_CARDS?: Queue<CardMessage>;
 }
 
 import {
@@ -230,6 +241,14 @@ import {
   type RepairJobAction,
 } from "./repairJobs";
 import { addJobPhoto, getJobPhoto, removeJobPhoto } from "./jobPhotos";
+import { jobPageFor, jobPagePhoto } from "./jobPage";
+import {
+  consumeLineCards,
+  customerLinksFor,
+  handleLineWebhook,
+  queueJobCards,
+  type CardMessage,
+} from "./lineCards";
 import {
   DEN_AIR,
   readShops,
@@ -2991,6 +3010,7 @@ export const BACKUP_TABLES = [
   "repair_job_mechanics",
   "repair_job_events",
   "repair_job_photos",
+  "line_links",
   // VAT billing (0106). The company book and every tax invoice and credit note issued — legal papers
   // the shop must keep; the numbers can never be made again.
   "tax_buyers",
@@ -7772,6 +7792,36 @@ const worker = {
       return json({ line: signInLine(env.SHOP ?? DEN_AIR) });
     }
 
+    // ── The customer's side of a repair job (plan 13.2) ─────────────────────────────────────
+    // PUBLIC, and they have to be. LINE's webhook proves itself with the channel signature
+    // (lineCards.ts); the job page is opened from a LINE card with the job's private code.
+    if (url.pathname === "/line/webhook" && request.method === "POST") {
+      const res = await handleLineWebhook(request, env, (jobId, totalSatang) =>
+        ledgerOf(env).repairJob({ kind: "approve", jobId, totalSatang }, null),
+      );
+      return withResponseHeaders(res);
+    }
+    // The code and photo ids are plain hex/uuid, so the path is read as it is — no decoding, which
+    // would turn a broken address into a server error.
+    const jobPage = url.pathname.match(/^\/job-page\/([^/]+)(?:\/photos\/([^/]+))?$/);
+    if (jobPage && request.method === "GET") {
+      const code = jobPage[1]!;
+      if (jobPage[2]) {
+        const photo = await jobPagePhoto(env, code, jobPage[2]);
+        if (!photo) return json({ error: "not_found" }, 404);
+        return new Response(photo.body, {
+          headers: {
+            ...responseHeaders,
+            "content-type": photo.contentType,
+            "cache-control": "private, max-age=3600",
+          },
+        });
+      }
+      const page = await jobPageFor(env, code);
+      if (!page) return json({ error: "not_found" }, 404);
+      return Response.json(page, { headers: { ...responseHeaders, "cache-control": "no-store" } });
+    }
+
     // ── Staff logins ────────────────────────────────────────────────────────────────────────────
     // PUBLIC, and they have to be: a login endpoint you must already be logged in to reach is no
     // use at cutover. Nothing here reads business data — the worst an anonymous caller can do is
@@ -8413,6 +8463,12 @@ const worker = {
       const job = await getRepairJob(env.DB, decodeURIComponent(jobGet[1]!));
       return job ? json({ ok: true, job }) : json({ ok: false, error: "not_found" }, 404);
     }
+    // What staff print and show for the customer (plan 13.2): the job page and the LINE QR.
+    const jobLinks = url.pathname.match(/^\/repair-jobs\/([^/]+)\/customer-links$/);
+    if (jobLinks && request.method === "GET") {
+      const links = await customerLinksFor(env, decodeURIComponent(jobLinks[1]!));
+      return links ? json(links) : json({ ok: false, error: "not_found" }, 404);
+    }
     // A job's photo set (plan 13.3): picture bytes, not JSON, and no stock — so not through the
     // StockLedger object. Private: only a signed-in session reaches here, never the public /img/.
     const jobPhoto = url.pathname.match(/^\/repair-jobs\/([^/]+)\/photos(?:\/([^/]+))?$/);
@@ -8455,6 +8511,13 @@ const worker = {
       if (!action) return json({ ok: false, error: "not_found" }, 404);
       const stub = ledgerOf(env);
       const result = await stub.repairJob(action, viewerStaff?.userId ?? null);
+      // The step's LINE card goes on the queue; the step itself is already saved, so a queue
+      // problem is logged and never fails the staff member's tap.
+      if (result.ok) {
+        await queueJobCards(env, result.job.id, Date.now()).catch((err) =>
+          console.error(`[line] cards for job ${result.job.id} not queued:`, err),
+        );
+      }
       return json(result, result.ok ? 200 : result.status);
     }
 
@@ -10296,4 +10359,8 @@ export default {
     }
   },
   scheduled: worker.scheduled,
+  // Plan 13.2: the LINE job cards, sent in the background.
+  async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
+    await consumeLineCards(batch as MessageBatch<CardMessage>, env);
+  },
 } satisfies ExportedHandler<Env>;

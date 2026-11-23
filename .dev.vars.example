@@ -43,3 +43,11 @@ TRACK_SALT=""
 # hold (this variable, no Cloudflare Access, a loopback hostname). Production has never had it and
 # must never get it — do not add it with `wrangler secret put`.
 PRACTICE_COPY=1
+
+# Plan 13.2 — the shop's LINE OA (Messaging API) for the customer's repair-job cards. All three, or
+# no card is sent. In production the owner sets them as secrets in the Cloudflare dashboard.
+# On the practice copy, any values + LINE_FAKE="1" write the cards to the log instead of sending.
+LINE_CHANNEL_SECRET=""
+LINE_CHANNEL_ACCESS_TOKEN=""
+LINE_OA_ID=""
+# LINE_FAKE="1"

@@ -46,6 +46,11 @@ Full navigable index: [docs/README.md](README.md). Intended platform design:
 ## 3. What is LIVE / built ✅
 
 **Backend (apps/api — deployed, auto-deploys from `main`):**
+- **The customer's job in LINE** (plan 13.2, 23 Nov 2026): cards from the shop's own LINE OA at six
+  job steps, sent through the `teampit-line-cards` queue (+ `-dlq`); link once by the QR on the bill;
+  อนุมัติราคา in LINE; the public job page `/job-page/:code` with the PromptPay QR at พร้อมรับรถ.
+  Sends nothing until the owner sets the three `LINE_*` secrets. Screens: Stage 12. See
+  knowledge/commerce/repair-jobs.md "The customer's LINE".
 - **A car = plate + province** (plan 13.11, 21 Nov 2026): every bill, repair job, history line and
   car row keeps `plate_province`; the car list, car page (`/customers/:plate?province=`), counts and
   imports go by both; a plate without a province is refused on the "save a car" paths (owner's pick A),
