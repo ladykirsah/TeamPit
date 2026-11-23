@@ -175,6 +175,8 @@ describe("migration 0097 > users.email becomes optional, nothing else moves", ()
         "tax_buyers.created_by_user_id",
         "tax_documents.cancelled_by_user_id",
         "tax_documents.issued_by_user_id",
+        // Job photos (0109): who added each one.
+        "repair_job_photos.user_id",
       ].sort((a, b) => a.localeCompare(b)),
     );
   });

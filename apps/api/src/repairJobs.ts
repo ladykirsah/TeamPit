@@ -82,6 +82,17 @@ export interface RepairJobDetail {
   totalSatang: number;
   /** รออะไหล่: the time the customer is told — the last part still waiting. */
   waitUntil: number | null;
+  /** The job's one photo set (plan 13.3), oldest first. */
+  photos: RepairJobPhoto[];
+}
+
+/** A photo on a job (plan 13.3); the picture itself is GET /repair-jobs/:id/photos/:photoId. */
+export interface RepairJobPhoto {
+  id: string;
+  contentType: string;
+  sizeBytes: number;
+  userName: string | null;
+  createdAt: number;
 }
 
 export interface MissingPart {
@@ -181,6 +192,15 @@ export async function getRepairJob(db: D1Database, jobId: string): Promise<Repai
     )
     .bind(jobId)
     .all<RepairJobEvent>();
+  const photos = await db
+    .prepare(
+      `SELECT p.id, p.content_type AS contentType, p.size_bytes AS sizeBytes,
+              COALESCE(u.name_th, u.name) AS userName, p.created_at AS createdAt
+       FROM repair_job_photos p LEFT JOIN users u ON u.id = p.user_id
+       WHERE p.job_id = ? ORDER BY p.created_at, p.rowid`,
+    )
+    .bind(jobId)
+    .all<RepairJobPhoto>();
   const live = lines.filter((l) => l.state !== "removed");
   const subtotalSatang = live.reduce((s, l) => s + l.unitPriceSatang * l.quantity, 0);
   const discountSatang = live.reduce((s, l) => s + l.discountSatang, 0);
@@ -193,6 +213,7 @@ export async function getRepairJob(db: D1Database, jobId: string): Promise<Repai
     discountSatang,
     totalSatang: subtotalSatang - discountSatang,
     waitUntil: waitUntil(lines),
+    photos: photos.results ?? [],
   };
 }
 
