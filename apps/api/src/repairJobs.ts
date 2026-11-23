@@ -20,6 +20,7 @@ import {
   isJobStatus,
   isWorkStep,
   jobLineProblem,
+  jobTotalSatang,
   nextJobNumber,
   waitUntil,
   workStatusFor,
@@ -493,6 +494,7 @@ function statusStmts(
   to: JobStatus,
   actor: JobActor,
   expectedAt: number | null = null,
+  note: string | null = null,
 ): D1PreparedStatement[] {
   // The bill is issued to pay only while the job sits at พร้อมรับรถ.
   const billIssuedAt = to === "ready" ? actor.now : null;
@@ -507,6 +509,7 @@ function statusStmts(
         kind: "status",
         from: job.status,
         to,
+        note,
         customerUpdate: customerUpdateFor(to),
         expectedAt: to === "waiting_parts" ? expectedAt : null,
       },
@@ -624,8 +627,8 @@ export async function openRepairJob(
       .prepare(
         `INSERT INTO repair_jobs
            (id, job_number, status, license_plate, plate_province, vehicle, mileage_km, problem,
-            opened_by_user_id, created_at, updated_at)
-         VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?)`,
+            opened_by_user_id, customer_token, created_at, updated_at)
+         VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -636,6 +639,7 @@ export async function openRepairJob(
         km,
         problem,
         actor.userId,
+        newCustomerToken(),
         actor.now,
         actor.now,
       ),
@@ -1180,11 +1184,56 @@ export async function payRepairJob(
     eventStmt(
       db,
       jobId,
-      { kind: "paid", from: "ready", to: "paid", note: method as string },
+      {
+        kind: "paid",
+        from: "ready",
+        to: "paid",
+        note: method as string,
+        customerUpdate: customerUpdateFor("paid"),
+      },
       actor,
     ),
   ]);
   return done(db, jobId);
+}
+
+// ── The customer approves the price (plan 13.2, owner's pick A) ─────────────────────────────
+
+/**
+ * อนุมัติราคา on the LINE price card: ประเมินราคา → ลูกค้าตกลงราคา, only for the exact price the card
+ * showed — a price changed since is never approved. The history says it was approved in LINE; no
+ * staff member did it.
+ */
+export async function approveRepairJobPrice(
+  db: D1Database,
+  jobId: string,
+  totalSatang: number,
+  actor: JobActor,
+): Promise<JobResult> {
+  const job = await readJob(db, jobId);
+  if (!job) return fail(404, "not_found");
+  if (job.status !== "estimate") return fail(409, "not_estimate");
+  if (jobTotalSatang(await readLines(db, jobId)) !== totalSatang) {
+    return fail(409, "price_changed");
+  }
+  await db.batch(statusStmts(db, job, "agreed", actor, null, "approved_in_line"));
+  return done(db, jobId);
+}
+
+/** The job a customer's private code (job page, QR) belongs to. */
+export async function jobIdForCode(db: D1Database, code: string): Promise<string | null> {
+  if (!/^[0-9a-f]{32}$/.test(code)) return null;
+  const row = await db
+    .prepare("SELECT id FROM repair_jobs WHERE customer_token = ?")
+    .bind(code)
+    .first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+/** 32 random hex characters: each job's private code. */
+function newCustomerToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ── One door for the StockLedger object ───────────────────────────────────────────────────────
@@ -1198,7 +1247,9 @@ export type RepairJobAction =
   | { kind: "removeLine"; jobId: string; lineId: string }
   | { kind: "mechanics"; jobId: string; userIds: unknown }
   | { kind: "cancel"; jobId: string; reason: unknown }
-  | { kind: "pay"; jobId: string; input: { paymentMethod?: unknown } };
+  | { kind: "pay"; jobId: string; input: { paymentMethod?: unknown } }
+  // Only from the customer's LINE (the webhook); no staff route reads into it.
+  | { kind: "approve"; jobId: string; totalSatang: number };
 
 export function runRepairJobAction(
   db: D1Database,
@@ -1223,6 +1274,8 @@ export function runRepairJobAction(
       return cancelRepairJob(db, action.jobId, action.reason, actor);
     case "pay":
       return payRepairJob(db, action.jobId, action.input, actor, priceLines);
+    case "approve":
+      return approveRepairJobPrice(db, action.jobId, action.totalSatang, actor);
   }
 }
 

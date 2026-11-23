@@ -22,10 +22,11 @@ Plan 10.1 (owner, 17 Nov 2026). Server and database only; the screens come later
 - รออะไหล่ is never picked by hand: a missing part puts the job there, the last one in takes it out.
 - Paid and cancelled are closed. A job is never deleted.
 - Every move is kept in `repair_job_events` with who and when.
-- The steps that send the customer a LINE OA update (`in`, `check`, `waiting_parts`, `working`,
-  `ready`) are recorded on the event as `customer_update`; sending them comes with the later "send
-  to car owner" feature. รออะไหล่ carries the time of the last part still waiting (date AND time —
-  the one exception to the no-clock-time rule).
+- The steps that send the customer a LINE card are recorded on the event as `customer_update`:
+  `in`, `check`, `estimate`, `waiting_parts`, `ready`, `paid` (plan 13.2, owner's pick A, 23 Nov
+  2026; was `in`/`check`/`waiting_parts`/`working`/`ready`). A changed waiting time is told too.
+  รออะไหล่ carries the time of the last part still waiting (date AND time — the one exception to the
+  no-clock-time rule). See "The customer's LINE" below.
 - Rules: `packages/core/src/repairJob.ts`. Database: migration 0105. Server:
   `apps/api/src/repairJobs.ts`, every write through the StockLedger Durable Object.
 
@@ -70,5 +71,39 @@ up to 10 MB, up to 40 per job) · `GET /repair-jobs/:id/photos/:photoId` (the pi
 (who added each, when). Every add and remove goes in the job's history (`photo_added`,
 `photo_removed`). **Private:** pictures sit in R2 under `job-photos/`, which the public `/img/` route
 never serves; only signed-in staff open them. Not through the StockLedger object (no stock moves).
-Code: `apps/api/src/jobPhotos.ts`; table `repair_job_photos` (migration 0109). The customer's LINE job
-page (plan 13.2) will show them through its own link.
+Code: `apps/api/src/jobPhotos.ts`; table `repair_job_photos` (migration 0109). The customer's job
+page shows them through its own link (below).
+
+## The customer's LINE (plan 13.2, 23 Nov 2026)
+
+From the shop's own LINE OA (owner's picks in DECISIONS.md "The customer's job in LINE").
+
+- **Link once.** Every job gets a private 32-character code (`customer_token`). Staff read
+  `GET /repair-jobs/:id/customer-links` → `{pageUrl, lineLinkUrl, linkedLines}` and print
+  `lineLinkUrl` as the QR on the job slip / bill (null until the OA is connected). Scanning it opens a
+  chat with the OA holding a ready message with the code; when the customer sends it, their LINE
+  follows the car (plate + province) for this job and every later one (`line_links`). The reply
+  confirms it with the job's latest card. Blocking the OA removes the links.
+- **Cards.** After every staff job write, the job's new card steps are taken once
+  (`card_queued_at`) and put on the `teampit-line-cards` queue; the Worker's `queue` handler pushes the
+  card to every LINE linked to the car, retrying when LINE is busy (same `X-Line-Retry-Key`, so a
+  retry arrives once), and gives up to the `-dlq` queue after 5 tries. Staff never wait for LINE.
+  Steps that happened while the OA was not connected are never sent later.
+- **อนุมัติราคา.** The price card's button sends `approve=<code>&total=<satang>`; the job moves to
+  ลูกค้าตกลงราคา only from a LINE linked to the car and only for that exact price (else the reply
+  sends them to the latest price). The history note is `approved_in_line`, no staff member.
+- **Job page.** `GET /job-page/:code` (public — the code is the key): shop, car, problem, the steps
+  told so far, the price lines and total, the waiting time, the photos
+  (`GET /job-page/:code/photos/:id`), and at พร้อมรับรถ the shop's default PromptPay QR for exactly the
+  bill with the account name. No staff names, costs or ids. Staff mark the job paid as today.
+- **Connecting the OA** (owner): three Worker secrets in the Cloudflare dashboard —
+  `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_OA_ID` — and the OA's webhook set to
+  `https://api.airplusauto.com/line/webhook`. Only Den Air's OA exists; no other shop can send.
+  Practice copy: any three values + `LINE_FAKE="1"` write the cards to the log.
+- Code: `packages/core/src/jobCard.ts` (the card, the QR link, the approve data),
+  `apps/api/src/line.ts` (LINE's API), `apps/api/src/lineCards.ts`, `apps/api/src/jobPage.ts`.
+  Migration 0110. The card look and the job page screen are drawn with Stage 12.
+- **Open, for Stage 12** (security read, 23 Nov 2026): a link follows the car and never ends, so
+  staff need to see a car's linked LINEs and unlink one (sold car, wrong person); the job page's own
+  screen (`/j/<code>`) must send `no-referrer` like the API does, so the code never leaves in a
+  Referer.

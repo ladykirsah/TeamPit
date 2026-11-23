@@ -241,7 +241,8 @@ describe("moveRepairJob > the steps", () => {
     expect(agreed.events.map((e) => [e.toStatus, e.customerUpdate])).toEqual([
       ["in", "in"],
       ["check", "check"],
-      ["estimate", null],
+      // Plan 13.2 (owner's pick A): the price is one of the customer's six LINE cards.
+      ["estimate", "estimate"],
       ["agreed", null],
     ]);
     expect(agreed.events[3]).toMatchObject({ userName: "เก๋", createdAt: T0 + 3 * 60_000 });
@@ -473,10 +474,11 @@ describe("end the wait > parts arrive, staff fill stock, then move to กำล�
     expect(working.lines.every((l) => l.state === "taken")).toBe(true);
     expect(stockOf(raw, "valve")).toEqual({ sellable: 0, held: 1 });
     expect(stockOf(raw, "pipe")).toEqual({ sellable: 0, held: 2 });
+    // Plan 13.2 (owner's pick A): กำลังซ่อม is not one of the customer's six LINE cards.
     expect(working.events.at(-1)).toMatchObject({
       fromStatus: "waiting_parts",
       toStatus: "working",
-      customerUpdate: "working",
+      customerUpdate: null,
     });
   });
 

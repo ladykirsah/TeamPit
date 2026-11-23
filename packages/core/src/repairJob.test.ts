@@ -138,15 +138,15 @@ describe("waitUntil > the time the customer is told", () => {
   });
 });
 
-describe("customerUpdateFor > the LINE OA update each step sends", () => {
-  it("given the owner's five steps > then each has its update", () => {
-    for (const s of ["in", "check", "waiting_parts", "working", "ready"] as const) {
+describe("customerUpdateFor > the LINE card each step sends (plan 13.2, owner's pick A)", () => {
+  it("given the owner's six steps > then each sends its card", () => {
+    for (const s of ["in", "check", "estimate", "waiting_parts", "ready", "paid"] as const) {
       expect(customerUpdateFor(s)).toBe(s);
     }
   });
 
-  it("given the shop-only steps > then none", () => {
-    for (const s of ["estimate", "agreed", "paid", "cancelled"] as const) {
+  it("given the shop-only steps > then no card (กำลังซ่อม is not one of the six)", () => {
+    for (const s of ["agreed", "working", "cancelled"] as const) {
       expect(customerUpdateFor(s)).toBeNull();
     }
   });

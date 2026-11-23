@@ -89,3 +89,20 @@ export function memoryBucket() {
   };
   return { objects, bucket: bucket as unknown as R2Bucket };
 }
+
+/** Tests only: the slice of a KV namespace the Worker uses, kept in memory. */
+export function memoryKv(initial: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initial));
+  const kv = {
+    async get(key: string) {
+      return store.get(key) ?? null;
+    },
+    async put(key: string, value: string) {
+      store.set(key, value);
+    },
+    async delete(key: string) {
+      store.delete(key);
+    },
+  };
+  return { store, kv: kv as unknown as KVNamespace };
+}
