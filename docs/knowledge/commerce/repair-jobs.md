@@ -3,7 +3,7 @@ type: feature
 title: งานซ่อม — the repair job (server side)
 description: Job steps with backward moves and who/when history, the estimate → job bill → paid bill, parts held in งานนอก until paid (owner's pick A), waiting parts with date and time, new parts linked later, cancel with a reason
 tags: [repair-job, pos, stock, hold, bill, line-oa]
-timestamp: 2026-11-17
+timestamp: 2026-11-23
 status: built (server only; screens come with the design kit)
 sources: [owner messages 17 Nov 2026, plan 10.1]
 ---
@@ -54,9 +54,21 @@ number, so it can never clash with a phone's `DAS…` walk-in bill.
 
 ## Addresses
 
-`GET /repair-jobs` (filters `status`, `plate`, `mechanic`, `open=1`; counts per step) ·
+`GET /repair-jobs` (filters `status`, `plate` + `province` (plan 13.11), `mechanic`, `open=1`; counts per step) ·
 `GET /repair-jobs/:id` · `POST /repair-jobs` · `POST /repair-jobs/:id/status {to}` ·
 `POST /repair-jobs/:id/lines` · `PATCH|DELETE /repair-jobs/:id/lines/:lineId` ·
 `PUT /repair-jobs/:id/mechanics {userIds}` · `POST /repair-jobs/:id/cancel {reason}` ·
 `POST /repair-jobs/:id/pay {paymentMethod: cash|promptpay}`. Every role may use them (a ช่าง moves
 jobs and takes payment, like at the counter).
+
+## Photos (plan 13.3, 23 Nov 2026)
+
+One photo set per job (owner: *"yes, but just keep it one group of picture set"*).
+`POST /repair-jobs/:id/photos` (the picture itself as the body, its `content-type` JPG/PNG/WEBP/HEIC,
+up to 10 MB, up to 40 per job) · `GET /repair-jobs/:id/photos/:photoId` (the picture,
+`cache-control: private`) · `DELETE /repair-jobs/:id/photos/:photoId`. The job page lists `photos`
+(who added each, when). Every add and remove goes in the job's history (`photo_added`,
+`photo_removed`). **Private:** pictures sit in R2 under `job-photos/`, which the public `/img/` route
+never serves; only signed-in staff open them. Not through the StockLedger object (no stock moves).
+Code: `apps/api/src/jobPhotos.ts`; table `repair_job_photos` (migration 0109). The customer's LINE job
+page (plan 13.2) will show them through its own link.

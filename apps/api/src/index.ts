@@ -229,6 +229,7 @@ import {
   type JobResult,
   type RepairJobAction,
 } from "./repairJobs";
+import { addJobPhoto, getJobPhoto, removeJobPhoto } from "./jobPhotos";
 import {
   DEN_AIR,
   readShops,
@@ -2989,6 +2990,7 @@ export const BACKUP_TABLES = [
   "repair_job_lines",
   "repair_job_mechanics",
   "repair_job_events",
+  "repair_job_photos",
   // VAT billing (0106). The company book and every tax invoice and credit note issued — legal papers
   // the shop must keep; the numbers can never be made again.
   "tax_buyers",
@@ -8410,6 +8412,37 @@ const worker = {
     if (jobGet && request.method === "GET") {
       const job = await getRepairJob(env.DB, decodeURIComponent(jobGet[1]!));
       return job ? json({ ok: true, job }) : json({ ok: false, error: "not_found" }, 404);
+    }
+    // A job's photo set (plan 13.3): picture bytes, not JSON, and no stock — so not through the
+    // StockLedger object. Private: only a signed-in session reaches here, never the public /img/.
+    const jobPhoto = url.pathname.match(/^\/repair-jobs\/([^/]+)\/photos(?:\/([^/]+))?$/);
+    if (jobPhoto) {
+      const jobId = decodeURIComponent(jobPhoto[1]!);
+      const photoId = jobPhoto[2] ? decodeURIComponent(jobPhoto[2]) : null;
+      const actor = { userId: viewerStaff?.userId ?? null, now: Date.now() };
+      const answer = (r: JobResult) => json(r, r.ok ? 200 : r.status);
+      if (!photoId && request.method === "POST") {
+        const photo = {
+          bytes: await request.arrayBuffer(),
+          contentType: request.headers.get("content-type") ?? "",
+        };
+        return answer(await addJobPhoto(env.DB, env.IMAGES, jobId, photo, actor));
+      }
+      if (photoId && request.method === "GET") {
+        const got = await getJobPhoto(env.DB, env.IMAGES, jobId, photoId);
+        if (!got) return json({ ok: false, error: "not_found" }, 404);
+        return new Response(got.body, {
+          headers: {
+            ...responseHeaders,
+            "content-type": got.contentType,
+            "cache-control": "private, max-age=3600",
+          },
+        });
+      }
+      if (photoId && request.method === "DELETE") {
+        return answer(await removeJobPhoto(env.DB, env.IMAGES, jobId, photoId, actor));
+      }
+      return json({ ok: false, error: "not_found" }, 404);
     }
     const isJobPath = url.pathname === "/repair-jobs" || url.pathname.startsWith("/repair-jobs/");
     if (isJobPath && request.method !== "GET") {
