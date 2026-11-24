@@ -31,6 +31,17 @@ Renderers honor both axes: `/account/orders` statusPill (เตรียมจ�
 
 **Summary cards** (owner rule, 30 Jul 2026, `apps/admin/src/lib/orderSummaryCards.ts` + tests): every card is exactly one operational status; labels are DERIVED from `operationalStatusLabel` so they cannot drift from the Status column or Filter dropdown; where a card's label equals a tab's label, the card IS that tab. Card counts are **all-time** by design, so clicking one widens the date range — otherwise a card reading 1 could open an empty table under the default Today filter. Open follow-up (PR #92 era): the operational pill shows a generic "Fail" for cancelled; making it say "Cancelled" vs "Expired" is blocked on the one-label-source rule (split "fail" or override only in the badge).
 
+## Delivery tracking (plan 13.7, owner pick A 21 Nov + "close the gap" 24 Nov 2026)
+
+- The drop-off form writes `carrier` + `tracking_no` + `order_status='shipped'` in one PATCH;
+  `trackingUrl()` (packages/core carriers.ts) opens the carrier's own tracking page (Flash, Kerry,
+  J&T, ไปรษณีย์ไทย). No carrier API: staff set delivered.
+- **ส่งถึงแล้ว only after the parcel went out:** `PATCH /orders/:id {orderStatus: "delivered"}` (or the
+  old Thai "สำเร็จ") is refused 409 "only a parcel that went out can be delivered" unless the order is
+  `shipped` (or already `delivered`). Code: `updateOrder` in apps/api/src/index.ts.
+- Still to draw: TeamPit's ส่งถึงแล้ว button (Stage 12) and the AirPlus order page's tap from the tracking
+  number to the carrier's page (AirPlus board 7 ติดตาม).
+
 ## Building blocks for notifications/dashboards — reuse, don't reinvent
 
 - Order data: `fetchOrders()` from `@/lib/api` → `OrderRow[]`, filter `channel === 'airplus'`.
