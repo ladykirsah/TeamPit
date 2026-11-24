@@ -46,6 +46,9 @@ Full navigable index: [docs/README.md](README.md). Intended platform design:
 ## 3. What is LIVE / built ✅
 
 **Backend (apps/api — deployed, auto-deploys from `main`):**
+- **A repair job's warranty** (plan 13.6, 24 Nov 2026): the owner sets a period + note at
+  พร้อมรับรถ (`PUT/DELETE /repair-jobs/:id/warranty`, super admin only); it starts on the pay day and
+  shows on the bill and the customer's job page when แสดงบนบิล is on. Screens: Stage 12.
 - **หน้าหลัก's numbers** (plan 13.5, 23 Nov 2026): `GET /home/numbers` — AirPlus orders by step,
   เหลือน้อย / หมด products, open repair jobs by step, cars in today and in the shop, AirPlus orders
   today, and money in today + yesterday (super admin only), counted on the server with the same core

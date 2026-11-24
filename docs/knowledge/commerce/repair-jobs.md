@@ -74,6 +74,20 @@ never serves; only signed-in staff open them. Not through the StockLedger object
 Code: `apps/api/src/jobPhotos.ts`; table `repair_job_photos` (migration 0109). The customer's job
 page shows them through its own link (below).
 
+## Warranty (plan 13.6, 24 Nov 2026)
+
+The owner decides it, job by job (DECISIONS.md "A repair job's warranty").
+`PUT /repair-jobs/:id/warranty {count, unit: day|month, note?, onBill?}` sets it,
+`DELETE /repair-jobs/:id/warranty` takes it off — **super admin only** (`canSetWarranty`, 403
+`super_admin_only`), **only at พร้อมรับรถ** (409 `not_ready`; a paid job 409 `closed`), through the
+StockLedger object like every job write. 400 `warranty_period` (1–120 months or 1–3650 days),
+`warranty_note_too_long` (200), `warranty_on_bill`. The job reads `warranty {count, unit, note, onBill,
+endsOn}`; `endsOn` ("YYYY-MM-DD", Thailand) appears once paid — the pay day plus the period, a short
+month ending on its last day (`packages/core/src/warranty.ts`). History: `warranty_set` /
+`warranty_removed`. When `onBill` is on, `GET /onsite/sales/:id` (the job's bill) and the customer's
+`/job-page/:code` carry `warranty {count, unit, note, endsOn}`; off → `null` there, staff still see it
+on the job. Migration 0111.
+
 ## The customer's LINE (plan 13.2, 23 Nov 2026)
 
 From the shop's own LINE OA (owner's picks in DECISIONS.md "The customer's job in LINE").

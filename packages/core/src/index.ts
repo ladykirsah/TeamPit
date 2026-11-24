@@ -63,3 +63,4 @@ export * from "./repairJob";
 export * from "./jobCard";
 export * from "./taxDocs";
 export * from "./homeNumbers";
+export * from "./warranty";
