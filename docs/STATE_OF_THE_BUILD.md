@@ -46,6 +46,9 @@ Full navigable index: [docs/README.md](README.md). Intended platform design:
 ## 3. What is LIVE / built ✅
 
 **Backend (apps/api — deployed, auto-deploys from `main`):**
+- **Delivery tracking** (plan 13.7, 24 Nov 2026): already live (carrier + tracking number, the
+  carrier's own page); now ส่งถึงแล้ว is refused for an AirPlus order that was never sent. The two
+  screen pieces wait for Stage 12 / AirPlus board 7. See knowledge/commerce/order-lifecycle.md.
 - **A repair job's warranty** (plan 13.6, 24 Nov 2026): the owner sets a period + note at
   พร้อมรับรถ (`PUT/DELETE /repair-jobs/:id/warranty`, super admin only); it starts on the pay day and
   shows on the bill and the customer's job page when แสดงบนบิล is on. Screens: Stage 12.

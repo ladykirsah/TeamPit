@@ -3872,6 +3872,16 @@ export async function updateOrder(
     return { ok: false, code: 409, reason: "use the cancel action to cancel an order" };
   }
 
+  // ส่งถึงแล้ว only after the parcel went out (plan 13.7, owner 24 Nov 2026: "close the gap"): a
+  // wrong tap must not finish an order that was never sent. Saying it again is harmless.
+  if (
+    "orderStatus" in patch &&
+    normalizeOrderStatus(patch.orderStatus) === "delivered" &&
+    !["shipped", "delivered"].includes(normalizeOrderStatus(row.orderStatus) ?? "")
+  ) {
+    return { ok: false, code: 409, reason: "only a parcel that went out can be delivered" };
+  }
+
   // A parcel cannot go out before the money is settled AND — for a bank transfer — before the slip
   // that settled it is on the order. The owner's sequence, 27 Aug 2026: placed, paid, slip
   // approved, shipped. See canShipOrder for why COD is exempt.
