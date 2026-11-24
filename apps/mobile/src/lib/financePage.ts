@@ -1,4 +1,9 @@
-import { operationalStatus } from "@l-shopee/core";
+import {
+  billTotals as coreBillTotals,
+  moneyMovedOrders,
+  operationalStatus,
+  orderTotals as coreOrderTotals,
+} from "@l-shopee/core";
 import type { Phrase } from "@l-shopee/shared/lang";
 import { bahtText } from "./flashPage";
 import {
@@ -126,16 +131,8 @@ export function changeLine(
 
 export const inRange = (ms: number, r: Range) => ms >= r.from && ms < r.to;
 
-/** A refunded bill is not income; only completed bills count (the old page's summarize). */
-export function billTotals(bills: readonly Bill[]) {
-  const done = bills.filter((b) => b.saleStatus === "completed");
-  const sum = (pick: (b: Bill) => number) => done.reduce((n, b) => n + pick(b), 0);
-  return {
-    count: done.length,
-    revenueSatang: sum((b) => b.grandTotalSatang),
-    profitSatang: sum((b) => b.grossProfitSatang),
-  };
-}
+/** A refunded bill is not income; only completed bills count. The rule lives in @l-shopee/core (13.5). */
+export const billTotals = (bills: readonly Bill[]) => coreBillTotals(bills);
 
 const same = (text: string): Phrase => ({ th: text, en: text });
 
@@ -174,24 +171,12 @@ export function searchBills(bills: readonly Bill[], query: string): Bill[] {
   );
 }
 
-/** Only orders where money has moved (the old page's rule): done, refunded, claimed, claim refused. */
-const MONEY_MOVED = new Set(["complete", "refunded", "claimed", "claim_rejected"]);
+/** Only orders where money has moved: done, refunded, claimed, claim refused. Rule in @l-shopee/core. */
+export const financeOrders = (orders: readonly MoneyOrder[], r: Range): MoneyOrder[] =>
+  moneyMovedOrders(orders, r);
 
-export function financeOrders(orders: readonly MoneyOrder[], r: Range): MoneyOrder[] {
-  return orders.filter((o) => {
-    const s = operationalStatus(o.orderStatus, o.paymentStatus);
-    return o.channel === "airplus" && s != null && MONEY_MOVED.has(s) && inRange(placedAt(o), r);
-  });
-}
-
-/** A refunded order is no sale (as a refunded bill is no income); its profit is the shipping lost. */
-export function orderTotals(orders: readonly MoneyOrder[]) {
-  return {
-    count: orders.length,
-    revenueSatang: orders.reduce((n, o) => n + (o.refunded ? 0 : (o.salesSatang ?? 0)), 0),
-    profitSatang: orders.reduce((n, o) => n + (o.profitSatang ?? 0), 0),
-  };
-}
+/** A refunded order is no sale; its profit is the shipping lost. Rule in @l-shopee/core (13.5). */
+export const orderTotals = (orders: readonly MoneyOrder[]) => coreOrderTotals(orders);
 
 /** Said once, only when it isn't the usual (a done order says nothing). */
 export function orderState(o: MoneyOrder): Phrase | null {

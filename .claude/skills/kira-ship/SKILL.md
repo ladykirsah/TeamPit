@@ -36,6 +36,7 @@ lessons → simplify → commit → push → PR → prod migration (if any) → 
    Check it is signed with `git cat-file -p HEAD | grep -c "BEGIN SSH SIGNATURE"` (the local "N" from `%G?` is normal).
 5. **Push:** `git push -u origin claude/<topic>`.
    - The push guard (`~/.claude/hooks/gate-git-writes.py`) needs the owner's approval of a plain-prose `Plan:` line. Put that line in your **final message, before the owner's "go"**. Lines written mid-turn have been lost from the transcript.
+   - **Asking in the question box (AskUserQuestion)?** Put the `Plan: … > …` line **inside the question text**. The guard reads the question and the owner's answer since 23 Nov 2026 (13.2); text written just before the question may never reach the saved record.
    - If the guard wrongly blocks an approved flow, the owner's standing rule is to fix the guard test-first (`gate-git-writes.test.py`, keep a `.bak-<date>` copy). Never send them back for another approval word.
 6. **Open the PR:** `gh pr create --repo ladykirsah/TeamPit --base main …`. The body has the sections *What ships · Database · Tests · Rollback*. Then bind the PR with `mcp__ccd_pr__get_status`.
 

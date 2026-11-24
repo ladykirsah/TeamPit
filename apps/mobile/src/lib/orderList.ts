@@ -1,4 +1,9 @@
-import { operationalStatus, operationalStatusPhrase, type OperationalStatus } from "@l-shopee/core";
+import {
+  operationalStatus,
+  operationalStatusPhrase,
+  orderPlacedAt,
+  type OperationalStatus,
+} from "@l-shopee/core";
 import type { Phrase } from "@l-shopee/shared/lang";
 
 /**
@@ -120,9 +125,7 @@ export const DEFAULT_VIEW: OrderView = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** When the order was placed; an imported order without one is placed by its import. */
-export function placedAt(o: OrderListRow): number {
-  return o.orderCreatedAt ?? o.importedAt;
-}
+export const placedAt = (o: OrderListRow): number => orderPlacedAt(o);
 
 export function startOfDay(ms: number): number {
   const d = new Date(ms);

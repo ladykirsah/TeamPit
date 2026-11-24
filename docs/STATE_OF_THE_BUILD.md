@@ -46,6 +46,11 @@ Full navigable index: [docs/README.md](README.md). Intended platform design:
 ## 3. What is LIVE / built ✅
 
 **Backend (apps/api — deployed, auto-deploys from `main`):**
+- **หน้าหลัก's numbers** (plan 13.5, 23 Nov 2026): `GET /home/numbers` — AirPlus orders by step,
+  เหลือน้อย / หมด products, open repair jobs by step, cars in today and in the shop, AirPlus orders
+  today, and money in today + yesterday (super admin only), counted on the server with the same core
+  rules the app pages use (`packages/core/src/homeNumbers.ts`). The app's หน้าหลัก still counts by
+  itself until Stage 12 draws the new one.
 - **The customer's job in LINE** (plan 13.2, 23 Nov 2026): cards from the shop's own LINE OA at six
   job steps, sent through the `teampit-line-cards` queue (+ `-dlq`); link once by the QR on the bill;
   อนุมัติราคา in LINE; the public job page `/job-page/:code` with the PromptPay QR at พร้อมรับรถ.
