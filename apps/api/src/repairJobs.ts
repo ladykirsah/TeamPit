@@ -21,6 +21,10 @@ import {
   isWorkStep,
   jobLineProblem,
   jobTotalSatang,
+  readWarranty,
+  warrantyEndsOn,
+  type Warranty,
+  type WarrantyUnit,
   nextJobNumber,
   waitUntil,
   workStatusFor,
@@ -85,6 +89,13 @@ export interface RepairJobDetail {
   waitUntil: number | null;
   /** The job's one photo set (plan 13.3), oldest first. */
   photos: RepairJobPhoto[];
+  /** Plan 13.6: the owner's warranty for this job; `endsOn` once it is paid. */
+  warranty: JobWarranty | null;
+}
+
+export interface JobWarranty extends Warranty {
+  /** The last day ("YYYY-MM-DD", Thailand), counted from the pay day; null until paid. */
+  endsOn: string | null;
 }
 
 /** A photo on a job (plan 13.3); the picture itself is GET /repair-jobs/:id/photos/:photoId. */
@@ -142,12 +153,41 @@ interface JobRow {
   createdAt: number;
   updatedAt: number;
   closedAt: number | null;
+  warrantyCount: number | null;
+  warrantyUnit: WarrantyUnit | null;
+  warrantyNote: string | null;
+  warrantyOnBill: number;
 }
 
 const JOB_COLUMNS = `id, job_number AS jobNumber, status, license_plate AS licensePlate,
   plate_province AS plateProvince, vehicle,
   mileage_km AS mileageKm, problem, cancel_reason AS cancelReason, bill_issued_at AS billIssuedAt,
-  sale_id AS saleId, created_at AS createdAt, updated_at AS updatedAt, closed_at AS closedAt`;
+  sale_id AS saleId, created_at AS createdAt, updated_at AS updatedAt, closed_at AS closedAt,
+  warranty_count AS warrantyCount, warranty_unit AS warrantyUnit, warranty_note AS warrantyNote,
+  warranty_on_bill AS warrantyOnBill`;
+
+/** The job's warranty as the app reads it; its last day once the job is paid. */
+export function jobWarranty(row: {
+  status: string;
+  closedAt: number | null;
+  warrantyCount: number | null;
+  warrantyUnit: WarrantyUnit | null;
+  warrantyNote: string | null;
+  warrantyOnBill: number;
+}): JobWarranty | null {
+  if (row.warrantyCount == null || !row.warrantyUnit) return null;
+  const count = Number(row.warrantyCount);
+  return {
+    count,
+    unit: row.warrantyUnit,
+    note: row.warrantyNote,
+    onBill: Number(row.warrantyOnBill) === 1,
+    endsOn:
+      row.status === "paid" && row.closedAt != null
+        ? warrantyEndsOn(row.closedAt, count, row.warrantyUnit)
+        : null,
+  };
+}
 
 async function readJob(db: D1Database, jobId: string): Promise<JobRow | null> {
   return db
@@ -205,8 +245,10 @@ export async function getRepairJob(db: D1Database, jobId: string): Promise<Repai
   const live = lines.filter((l) => l.state !== "removed");
   const subtotalSatang = live.reduce((s, l) => s + l.unitPriceSatang * l.quantity, 0);
   const discountSatang = live.reduce((s, l) => s + l.discountSatang, 0);
+  const { warrantyCount, warrantyUnit, warrantyNote, warrantyOnBill, ...row } = job;
   return {
-    ...job,
+    ...row,
+    warranty: jobWarranty(job),
     lines,
     mechanics: [...(mechanics.results ?? [])].sort((a, b) => thaiOrder(a.name, b.name)),
     events: events.results ?? [],
@@ -1197,6 +1239,50 @@ export async function payRepairJob(
   return done(db, jobId);
 }
 
+// ── The owner's warranty (plan 13.6) ─────────────────────────────────────────────────────────
+
+/**
+ * Set (or, with null, take off) a job's warranty — while the bill is made (พร้อมรับรถ) and before it
+ * is paid; paid jobs are closed. Who may: the owner alone, checked at the route (canSetWarranty).
+ */
+export async function setJobWarranty(
+  db: D1Database,
+  jobId: string,
+  input: unknown,
+  actor: JobActor,
+): Promise<JobResult> {
+  const job = await readJob(db, jobId);
+  if (!job) return fail(404, "not_found");
+  if (isClosedJob(job.status)) return fail(409, "closed");
+  if (job.status !== "ready") return fail(409, "not_ready");
+  if (input === null) {
+    if (job.warrantyCount == null) return done(db, jobId);
+    await db.batch([
+      db
+        .prepare(
+          `UPDATE repair_jobs SET warranty_count = NULL, warranty_unit = NULL, warranty_note = NULL,
+             warranty_on_bill = 1, updated_at = ? WHERE id = ?`,
+        )
+        .bind(actor.now, jobId),
+      eventStmt(db, jobId, { kind: "warranty_removed" }, actor),
+    ]);
+    return done(db, jobId);
+  }
+  const read = readWarranty(input);
+  if (!read.ok) return fail(400, read.error);
+  const w = read.warranty;
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE repair_jobs SET warranty_count = ?, warranty_unit = ?, warranty_note = ?,
+           warranty_on_bill = ?, updated_at = ? WHERE id = ?`,
+      )
+      .bind(w.count, w.unit, w.note, w.onBill ? 1 : 0, actor.now, jobId),
+    eventStmt(db, jobId, { kind: "warranty_set", note: `${w.count} ${w.unit}` }, actor),
+  ]);
+  return done(db, jobId);
+}
+
 // ── The customer approves the price (plan 13.2, owner's pick A) ─────────────────────────────
 
 /**
@@ -1249,7 +1335,9 @@ export type RepairJobAction =
   | { kind: "cancel"; jobId: string; reason: unknown }
   | { kind: "pay"; jobId: string; input: { paymentMethod?: unknown } }
   // Only from the customer's LINE (the webhook); no staff route reads into it.
-  | { kind: "approve"; jobId: string; totalSatang: number };
+  | { kind: "approve"; jobId: string; totalSatang: number }
+  // Plan 13.6: null takes the warranty off. The route checks the owner (canSetWarranty) first.
+  | { kind: "warranty"; jobId: string; input: unknown };
 
 export function runRepairJobAction(
   db: D1Database,
@@ -1276,6 +1364,8 @@ export function runRepairJobAction(
       return payRepairJob(db, action.jobId, action.input, actor, priceLines);
     case "approve":
       return approveRepairJobPrice(db, action.jobId, action.totalSatang, actor);
+    case "warranty":
+      return setJobWarranty(db, action.jobId, action.input, actor);
   }
 }
 
@@ -1291,7 +1381,7 @@ export function repairJobActionFor(
   const b = body ?? {};
   if (path === "/repair-jobs" && method === "POST") return { kind: "open", input: b };
   const m = path.match(
-    /^\/repair-jobs\/([^/]+)(?:\/(status|lines|mechanics|cancel|pay)(?:\/([^/]+))?)?$/,
+    /^\/repair-jobs\/([^/]+)(?:\/(status|lines|mechanics|cancel|pay|warranty)(?:\/([^/]+))?)?$/,
   );
   if (!m) return null;
   const jobId = decodeURIComponent(m[1]!);
@@ -1310,5 +1400,10 @@ export function repairJobActionFor(
   if (what === "cancel" && method === "POST" && !lineId)
     return { kind: "cancel", jobId, reason: b.reason };
   if (what === "pay" && method === "POST" && !lineId) return { kind: "pay", jobId, input: b };
+  if (what === "warranty" && method === "PUT" && !lineId)
+    return { kind: "warranty", jobId, input: b };
+  if (what === "warranty" && method === "DELETE" && !lineId) {
+    return { kind: "warranty", jobId, input: null };
+  }
   return null;
 }

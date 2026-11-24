@@ -48,6 +48,13 @@ export interface JobPageView {
   /** พร้อมรับรถ: pay by PromptPay — null when the shop has no PromptPay set up, or at any other step. */
   pay: { amountSatang: number; promptpayPayload: string; accountName: string | null } | null;
   paidAt: number | null;
+  /** Plan 13.6: the owner's warranty, only when แสดงบนบิล is on; its last day once paid. */
+  warranty: {
+    count: number;
+    unit: "day" | "month";
+    note: string | null;
+    endsOn: string | null;
+  } | null;
 }
 
 /** The shop's default PromptPay, for exactly this amount; null when there is none or it is broken. */
@@ -95,6 +102,14 @@ async function viewOf(env: JobPageEnv, job: RepairJobDetail): Promise<JobPageVie
     photos: job.photos.map((p) => ({ id: p.id, createdAt: p.createdAt })),
     pay: job.status === "ready" ? await payQr(env, total) : null,
     paidAt: job.status === "paid" ? job.closedAt : null,
+    warranty: job.warranty?.onBill
+      ? {
+          count: job.warranty.count,
+          unit: job.warranty.unit,
+          note: job.warranty.note,
+          endsOn: job.warranty.endsOn,
+        }
+      : null,
   };
 }
 

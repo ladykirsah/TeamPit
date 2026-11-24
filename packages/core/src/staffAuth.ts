@@ -240,6 +240,11 @@ export function canClearPayments(role: StaffRole): boolean {
   return role === "super_admin";
 }
 
+/** A repair job's warranty: the owner decides it, job by job (plan 13.6, owner 24 Nov 2026). */
+export function canSetWarranty(role: StaffRole): boolean {
+  return role === "super_admin";
+}
+
 /** Assessing a defect claim — the mechanic's whole job, and the others may do it too. */
 export function canReviewClaimRole(role: StaffRole): boolean {
   return role === "super_admin" || role === "admin" || role === "mechanic";

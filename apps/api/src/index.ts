@@ -69,6 +69,7 @@ import {
   classifyRefundAction,
   type RefundAction,
   canReviewClaim,
+  canSetWarranty,
   canDeleteProduct,
   canViewFinance,
   canRefund,
@@ -235,6 +236,7 @@ import { checkShopeeFees, readShopeeFees, SHOPEE_FEES_KEY } from "./shopeeFees";
 import {
   getRepairJob,
   listRepairJobs,
+  jobWarranty,
   repairJobActionFor,
   runRepairJobAction,
   type JobResult,
@@ -4989,6 +4991,24 @@ export async function deleteDraftFromDb(db: D1Database, id: string): Promise<{ o
 }
 
 /** One on-site sale (bill/quotation/draft) with its lines — the data source for reprint. */
+/**
+ * The warranty printed on a repair job's bill (plan 13.6): only when the owner left แสดงบนบิล on.
+ * A counter bill has none.
+ */
+async function billWarranty(db: D1Database, saleId: string) {
+  const job = await db
+    .prepare(
+      `SELECT status, closed_at AS closedAt, warranty_count AS warrantyCount,
+              warranty_unit AS warrantyUnit, warranty_note AS warrantyNote,
+              warranty_on_bill AS warrantyOnBill
+       FROM repair_jobs WHERE sale_id = ?`,
+    )
+    .bind(saleId)
+    .first<Parameters<typeof jobWarranty>[0]>();
+  const w = job ? jobWarranty(job) : null;
+  return w?.onBill ? { count: w.count, unit: w.unit, note: w.note, endsOn: w.endsOn } : null;
+}
+
 export async function getOnsiteSale(db: D1Database, id: string): Promise<unknown | null> {
   const header = await db
     .prepare(
@@ -5014,7 +5034,7 @@ export async function getOnsiteSale(db: D1Database, id: string): Promise<unknown
     )
     .bind(id)
     .all();
-  return { ...header, lines: lines.results ?? [] };
+  return { ...header, lines: lines.results ?? [], warranty: await billWarranty(db, id) };
 }
 
 // ── Customers (directory keyed by car plate) ────────────────────────────────────────────────────
@@ -8510,6 +8530,10 @@ const worker = {
       }
       const action = repairJobActionFor(request.method, url.pathname, body);
       if (!action) return json({ ok: false, error: "not_found" }, 404);
+      // A job's warranty is the owner's call alone (plan 13.6).
+      if (action.kind === "warranty" && !(viewerStaff && canSetWarranty(viewerStaff.role))) {
+        return json({ ok: false, error: "super_admin_only" }, 403);
+      }
       const stub = ledgerOf(env);
       const result = await stub.repairJob(action, viewerStaff?.userId ?? null);
       // The step's LINE card goes on the queue; the step itself is already saved, so a queue
