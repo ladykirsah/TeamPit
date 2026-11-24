@@ -1,3 +1,4 @@
+import { stockLevel, type StockLevel } from "@l-shopee/core";
 import { formatBaht } from "./money";
 import type { Phrase } from "@l-shopee/shared/lang";
 
@@ -56,7 +57,7 @@ export interface ProductRow {
 
 export type ProductTab = "all" | "airplus" | "notLive" | "low" | "out";
 export type ProductSort = "updated" | "name" | "price" | "low";
-export type StockLevel = "ok" | "low" | "out";
+export type { StockLevel };
 
 export interface ProductFilters {
   brand: string | null;
@@ -66,9 +67,6 @@ export interface ProductFilters {
 }
 
 export const NO_FILTERS: ProductFilters = { brand: null, usage: null, type: null, car: null };
-
-/** The shop's one low-stock line, the same as the web back office (apps/admin/src/lib/stock.ts). */
-const LOW_STOCK = 3;
 
 export const PRODUCT_TABS: readonly { key: ProductTab; label: Phrase }[] = [
   { key: "all", label: { th: "ทั้งหมด", en: "All" } },
@@ -85,10 +83,8 @@ export const PRODUCT_SORTS: readonly { key: ProductSort; label: Phrase }[] = [
   { key: "low", label: { th: "เหลือน้อยก่อน", en: "Lowest stock first" } },
 ];
 
-export function stockLevel(forSale: number): StockLevel {
-  if (forSale <= 0) return "out";
-  return forSale <= LOW_STOCK ? "low" : "ok";
-}
+/** หมด / เหลือน้อย / fine: the shop's one low-stock line lives in @l-shopee/core (13.5). */
+export { stockLevel };
 
 const inTab: Record<ProductTab, (r: ProductRow) => boolean> = {
   all: () => true,

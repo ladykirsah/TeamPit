@@ -241,6 +241,7 @@ import {
   type RepairJobAction,
 } from "./repairJobs";
 import { addJobPhoto, getJobPhoto, removeJobPhoto } from "./jobPhotos";
+import { homeNumbersFor, type MoneyReads } from "./homeNumbers";
 import { jobPageFor, jobPagePhoto } from "./jobPage";
 import {
   consumeLineCards,
@@ -9700,6 +9701,20 @@ const worker = {
 
     if (url.pathname === "/orders" && request.method === "GET") {
       return listOrders(env, seesCost(viewerStaff));
+    }
+
+    // หน้าหลัก's numbers (plan 13.5): the alerts and the main numbers in one quick answer. Money
+    // only for whoever can open การเงิน, read the same way การเงิน reads it.
+    if (url.pathname === "/home/numbers" && request.method === "GET") {
+      const seesMoney = viewerStaff ? canViewFinance(viewerStaff.role) : false;
+      const money: MoneyReads | null = seesMoney
+        ? {
+            bills: (range) => querySales(env.DB, range),
+            orders: async () =>
+              (await listFinanceOrders(env.DB)).orders as Awaited<ReturnType<MoneyReads["orders"]>>,
+          }
+        : null;
+      return json(await homeNumbersFor(env.DB, Date.now(), money));
     }
 
     // AirPlus Insight — the admin's answer to Shopee's Business Insights. One period per call; an
